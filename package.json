@@ -10,5 +10,6 @@
   },
   "dependencies": {
     "camelcase-keys": "^9.1.3"
-  }
+  },
+  "license": "MIT"
 }
