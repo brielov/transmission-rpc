@@ -19,9 +19,53 @@ export enum TorrentStatus {
 }
 
 /**
+ * Represents a file in a torrent.
+ */
+export interface File {
+	/** The number of bytes completed for this file. */
+	bytesCompleted: number;
+	/** The total size of the file in bytes. */
+	length: number;
+	/** The name of the file. */
+	name: string;
+	/** The index of the first piece that contains data for this file. */
+	beginPiece: number;
+	/** The index of the last piece that contains data for this file. */
+	endPiece: number;
+}
+
+/**
+ * Represents statistics for a file in a torrent.
+ */
+export interface FileStat {
+	/** The number of bytes completed for this file. */
+	bytesCompleted: number;
+	/** Whether the file is marked as "wanted" for download. */
+	wanted: boolean;
+	/** The priority of the file (e.g., low, normal, high). */
+	priority: number;
+}
+
+/**
+ * Represents a tracker configured for a torrent.
+ */
+export interface Tracker {
+	/** The announce URL of the tracker. */
+	announce: string;
+	/** The unique ID of the tracker. */
+	id: number;
+	/** The scrape URL of the tracker. */
+	scrape: string;
+	/** The name of the tracker site. */
+	sitename: string;
+	/** The tier of the tracker. */
+	tier: number;
+}
+
+/**
  * Represents statistics and state information for a tracker.
  */
-interface TrackerStat {
+export interface TrackerStat {
 	/** The unique ID of the tracker. */
 	id: number;
 	/** The current state of the tracker's announce process. */
@@ -66,28 +110,6 @@ interface TrackerStat {
 	scrapeState: number;
 	/** The number of seeders reported by the tracker. */
 	seederCount: number;
-}
-
-/**
- * Represents a tracker configured for a torrent.
- */
-export interface Tracker {
-	/** The announce URL of the tracker. */
-	announce: string;
-	/** The unique ID of the tracker. */
-	id: number;
-	/** The scrape URL of the tracker. */
-	scrape: string;
-	/** The name of the tracker site. */
-	sitename: string;
-	/** The tier of the tracker. */
-	tier: number;
-}
-
-export interface RemovedTorrent {
-	id: number;
-	name: string;
-	dateDeleted: string;
 }
 
 /**
@@ -146,34 +168,6 @@ export interface Peer {
 	rateToClient: number;
 	/** The upload rate from the client to the peer, in bytes per second (B/s). */
 	rateToPeer: number;
-}
-
-/**
- * Represents statistics for a file in a torrent.
- */
-export interface FileStat {
-	/** The number of bytes completed for this file. */
-	bytesCompleted: number;
-	/** Whether the file is marked as "wanted" for download. */
-	wanted: boolean;
-	/** The priority of the file (e.g., low, normal, high). */
-	priority: number;
-}
-
-/**
- * Represents a file in a torrent.
- */
-export interface File {
-	/** The number of bytes completed for this file. */
-	bytesCompleted: number;
-	/** The total size of the file in bytes. */
-	length: number;
-	/** The name of the file. */
-	name: string;
-	/** The index of the first piece that contains data for this file. */
-	beginPiece: number;
-	/** The index of the last piece that contains data for this file. */
-	endPiece: number;
 }
 
 /**
@@ -336,6 +330,57 @@ export interface Torrent {
 	webseedsSendingToUs: number;
 }
 
+/**
+ * Represents a removed torrent.
+ */
+export interface RemovedTorrent {
+	/** The unique ID of the torrent. */
+	id: number;
+	/** The name of the torrent. */
+	name: string;
+	/** The date the torrent was deleted. */
+	dateDeleted: string;
+}
+
+/**
+ * Represents the response from a session stats request.
+ */
+export interface SessionStatsResponse {
+	/** Total number of active torrents. */
+	activeTorrentCount: number;
+	/** Total download speed (bytes per second). */
+	downloadSpeed: number;
+	/** Total number of paused torrents. */
+	pausedTorrentCount: number;
+	/** Total upload speed (bytes per second). */
+	uploadSpeed: number;
+	/** Cumulative number of torrents ever added. */
+	torrentCount: number;
+	/** Cumulative data downloaded (bytes). */
+	downloadedBytes: number;
+	/** Cumulative data uploaded (bytes). */
+	uploadedBytes: number;
+	/** Total time spent downloading (seconds). */
+	secondsDownloading: number;
+	/** Total time spent seeding (seconds). */
+	secondsSeeding: number;
+	/** Total number of sessions since the server started. */
+	sessionCount: number;
+	/** Ratio of uploadedBytes to downloadedBytes. */
+	uploadRatio: number;
+}
+
+/**
+ * Represents the response from a port test request.
+ */
+export interface PortTestResponse {
+	/** Whether the port is open and accessible. */
+	portIsOpen: boolean;
+}
+
+/**
+ * Represents the response from a get session request.
+ */
 export interface GetSessionResponse {
 	/** Maximum download speed (in KB/s). */
 	altSpeedDown: number;
@@ -441,18 +486,34 @@ export interface GetSessionResponse {
 	seedQueueSize: number;
 }
 
-export type IDS = number | (string | number)[] | "recently-active";
+/**
+ * Represents a torrent ID or a list of torrent IDs.
+ */
+export type ID = number | ReadonlyArray<string | number> | "recently-active";
 
+/**
+ * Represents arguments for getting torrents.
+ */
 export interface GetTorrentArgs<K extends keyof Torrent> {
-	ids?: IDS;
-	fields?: K[];
+	/** The IDs of the torrents to retrieve. */
+	ids?: ID;
+	/** The fields to retrieve for each torrent. */
+	fields?: ReadonlyArray<K>;
 }
 
+/**
+ * Represents the response from a get torrent request.
+ */
 export interface GetTorrentResponse<K extends keyof Torrent> {
-	removed: RemovedTorrent[];
-	torrents: Pick<Torrent, K>[];
+	/** An array of removed torrents. */
+	removed: ReadonlyArray<RemovedTorrent>;
+	/** An array of torrents with the specified fields. */
+	torrents: ReadonlyArray<Pick<Torrent, K>>;
 }
 
+/**
+ * Represents arguments for adding a torrent.
+ */
 export interface AddTorrentArgs {
 	/** Pointer to a string of one or more cookies. */
 	cookies?: string;
@@ -461,7 +522,7 @@ export interface AddTorrentArgs {
 	/** Filename or URL of the .torrent file or a magnet link. */
 	filename?: string;
 	/** Array of string labels. */
-	labels?: string[];
+	labels?: ReadonlyArray<string>;
 	/** Base64-encoded .torrent content. */
 	metainfo?: string;
 	/** If true, don't start the torrent. */
@@ -471,21 +532,115 @@ export interface AddTorrentArgs {
 	/** Torrent's bandwidth priority (e.g., -1, 0, 1). */
 	bandwidthPriority?: number;
 	/** Indices of file(s) to download. */
-	filesWanted?: number[];
+	filesWanted?: ReadonlyArray<number>;
 	/** Indices of file(s) to not download. */
-	filesUnwanted?: number[];
+	filesUnwanted?: ReadonlyArray<number>;
 	/** Indices of high-priority file(s). */
-	priorityHigh?: number[];
+	priorityHigh?: ReadonlyArray<number>;
 	/** Indices of low-priority file(s). */
-	priorityLow?: number[];
+	priorityLow?: ReadonlyArray<number>;
 	/** Indices of normal-priority file(s). */
-	priorityNormal?: number[];
+	priorityNormal?: ReadonlyArray<number>;
 }
 
+/**
+ * Represents the response from an add torrent request.
+ */
 export interface AddTorrentResponse {
+	/** The torrent that was added. */
 	torrentAdded: {
+		/** The unique ID of the torrent. */
 		id: number;
+		/** The name of the torrent. */
 		name: string;
+		/** The hash string of the torrent. */
 		hashString: string;
 	};
+}
+
+/**
+ * Represents the response from a free space request.
+ */
+export interface FreeSpaceResponse {
+	/** The path to the directory. */
+	path: string;
+	/** The free space in the directory (in bytes). */
+	sizeBytes: number;
+	/** The total size of the directory (in bytes). */
+	totalSize: number;
+}
+
+/**
+ * Represents arguments for modifying torrent properties.
+ */
+export interface TorrentSetArgs {
+	/** The IDs of the torrents to modify. */
+	ids: ReadonlyArray<number> | "recently-active";
+	/** The bandwidth priority of the torrent (e.g., -1, 0, 1). */
+	bandwidthPriority?: number;
+	/** The maximum download speed in KB/s. */
+	downloadLimit?: number;
+	/** Whether the download speed limit is honored. */
+	downloadLimited?: boolean;
+	/** Indices of files to not download. */
+	filesUnwanted?: ReadonlyArray<number>;
+	/** Indices of files to download. */
+	filesWanted?: ReadonlyArray<number>;
+	/** The name of the torrent's bandwidth group. */
+	group?: string;
+	/** Whether the torrent honors session-wide speed limits. */
+	honorsSessionLimits?: boolean;
+	/** An array of string labels for the torrent. */
+	labels?: ReadonlyArray<string>;
+	/** The new location for the torrent's content. */
+	location?: string;
+	/** The maximum number of peers for the torrent. */
+	peerLimit?: number;
+	/** Indices of high-priority files. */
+	priorityHigh?: ReadonlyArray<number>;
+	/** Indices of low-priority files. */
+	priorityLow?: ReadonlyArray<number>;
+	/** Indices of normal-priority files. */
+	priorityNormal?: ReadonlyArray<number>;
+	/** The position of the torrent in its queue (0-based). */
+	queuePosition?: number;
+	/** The torrent-level number of minutes of seeding inactivity. */
+	seedIdleLimit?: number;
+	/** Which seeding inactivity mode to use (e.g., 0 = unlimited, 1 = limited by seedIdleLimit). */
+	seedIdleMode?: number;
+	/** The torrent-level seeding ratio limit. */
+	seedRatioLimit?: number;
+	/** Which seeding ratio mode to use (e.g., 0 = unlimited, 1 = limited by seedRatioLimit). */
+	seedRatioMode?: number;
+	/** Whether to download torrent pieces sequentially. */
+	sequentialDownload?: boolean;
+	/**
+	 * A string of announce URLs, one per line, with a blank line between tiers.
+	 * Use this instead of `trackerAdd`, `trackerRemove`, and `trackerReplace`.
+	 */
+	trackerList?: string;
+	/**
+	 * @deprecated Use `trackerList` instead.
+	 * Adds new trackers to the torrent's tracker list.
+	 */
+	trackerAdd?: ReadonlyArray<string>;
+	/**
+	 * @deprecated Use `trackerList` instead.
+	 * Removes trackers from the torrent's tracker list.
+	 */
+	trackerRemove?: ReadonlyArray<number>;
+	/**
+	 * @deprecated Use `trackerList` instead.
+	 * Replaces the torrent's tracker list with new trackers.
+	 */
+	trackerReplace?: ReadonlyArray<{
+		/** The index of the tracker to replace. */
+		index: number;
+		/** The new tracker URL. */
+		url: string;
+	}>;
+	/** The maximum upload speed in KB/s. */
+	uploadLimit?: number;
+	/** Whether the upload speed limit is honored. */
+	uploadLimited?: boolean;
 }
