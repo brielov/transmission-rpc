@@ -1,16 +1,16 @@
 import camelcaseKeys from "camelcase-keys";
 import type {
-	AddTorrentResponse,
 	AddTorrentArgs,
+	AddTorrentResponse,
+	FreeSpaceResponse,
 	GetSessionResponse,
 	GetTorrentArgs,
 	GetTorrentResponse,
-	Torrent,
 	ID,
-	FreeSpaceResponse,
-	TorrentSetArgs,
 	PortTestResponse,
 	SessionStatsResponse,
+	Torrent,
+	TorrentSetArgs,
 } from "./types";
 
 /**
@@ -38,14 +38,6 @@ interface RPCFailure {
 type RPCResponse<T> = RPCSuccess<T> | RPCFailure;
 
 /**
- * Represents credentials for authenticating with the Transmission RPC API.
- */
-interface Credentials {
-	username: string;
-	password: string;
-}
-
-/**
  * Represents an error returned by the Transmission RPC API.
  */
 export class RPCError extends Error {
@@ -67,6 +59,9 @@ export class RPCError extends Error {
  */
 export class TransmissionClient {
 	private readonly url: URL;
+	private readonly username: string;
+	private readonly password: string;
+
 	private sessionId: string | null = null;
 
 	/**
@@ -75,10 +70,20 @@ export class TransmissionClient {
 	 * @param credentials - Optional credentials for authentication.
 	 */
 	constructor(
-		baseUrl: string,
-		private readonly credentials?: Readonly<Credentials>,
+		baseUrl: string | URL,
+		credentials?: { username?: string; password?: string },
 	) {
-		this.url = new URL("/transmission/rpc", baseUrl);
+		const url = new URL("/transmission/rpc", baseUrl);
+
+		// Use credentials from URL or fallback to provided ones
+		this.username = credentials?.username ?? url.username;
+		this.password = credentials?.password ?? url.password;
+
+		// Remove credentials from URL
+		url.username = "";
+		url.password = "";
+
+		this.url = url;
 	}
 
 	/**
@@ -86,9 +91,10 @@ export class TransmissionClient {
 	 * @returns The Base64-encoded Basic Auth header, or `undefined` if no credentials are provided.
 	 */
 	private getAuthHeader(): string | undefined {
-		if (this.credentials) {
-			const { username, password } = this.credentials;
-			const encoded = Buffer.from(`${username}:${password}`).toString("base64");
+		const { username, password } = this;
+		if (username || password) {
+			// Only generate the header if either username or password is non-empty
+			const encoded = btoa(`${username}:${password}`);
 			return `Basic ${encoded}`;
 		}
 		return undefined;
