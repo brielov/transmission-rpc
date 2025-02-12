@@ -1,0 +1,9 @@
+{
+  "name": "@brielov/transmission-rpc",
+  "version": "0.2.1",
+  "license": "MIT",
+  "exports": "./mod.ts",
+  "imports": {
+    "camelcase-keys": "npm:camelcase-keys@^9.1.3"
+  }
+}

@@ -14,14 +14,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
         with:
-          bun-version: latest
+          deno-version: v2.x
 
-      - name: Install dependencies
-        run: bun install
+      - name: Run formatter
+        run: deno fmt --check
+
+      - name: Run linter
+        run: deno lint
+
+      - name: Run tests
+        run: deno test
 
       - name: Publish package
-        run: bunx jsr publish --allow-slow-types
+        run: deno publish
