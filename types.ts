@@ -644,3 +644,29 @@ export interface TorrentSetArgs {
   /** Whether the upload speed limit is honored. */
   uploadLimited?: boolean;
 }
+
+/**
+ * Configuration options for the TransmissionClient constructor.
+ */
+export interface TransmissionConfig {
+  /** The hostname or IP address of the Transmission server. */
+  host: string;
+  /** The port number for the Transmission server. */
+  port: number;
+  /** Whether to use SSL/TLS for the connection. */
+  ssl?: boolean;
+  /** Username for authentication. */
+  username?: string;
+  /** Password for authentication. */
+  password?: string;
+  /** Request timeout in milliseconds. */
+  timeoutMs?: number;
+}
+
+/**
+ * Union type for all possible constructor configurations.
+ */
+export type TransmissionClientConfig =
+  | string
+  | URL
+  | TransmissionConfig;

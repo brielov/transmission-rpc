@@ -14,6 +14,13 @@ information, and perform other operations supported by the Transmission daemon.
 - **Modern**: Leverages modern JavaScript features like `fetch` and
   `AbortSignal`.
 
+## Breaking Changes in v1.0.0
+
+- **Method rename**: `client.get()` has been renamed to `client.torrents()` for
+  better clarity
+- **Constructor change**: The constructor now accepts a single configuration
+  parameter instead of separate `baseUrl` and `credentials` parameters
+
 ## Installation
 
 Install the library using npm or yarn:
@@ -28,13 +35,42 @@ deno add jsr:@brielov/transmission-rpc
 
 ### Basic Setup
 
+The `TransmissionClient` constructor accepts multiple configuration formats for
+flexibility:
+
+#### String URL
+
 ```typescript
 import { TransmissionClient } from "@brielov/transmission-rpc";
 
-const client = new TransmissionClient("http://localhost:9091", {
+const client = new TransmissionClient("http://localhost:9091");
+```
+
+#### URL Object
+
+```typescript
+const client = new TransmissionClient(new URL("http://localhost:9091"));
+```
+
+#### Configuration Object
+
+```typescript
+const client = new TransmissionClient({
+  host: "localhost",
+  port: 9091,
+  ssl: false,
   username: "your-username",
   password: "your-password",
+  timeoutMs: 15000,
 });
+```
+
+#### With Credentials in URL
+
+```typescript
+const client = new TransmissionClient(
+  "http://username:password@localhost:9091",
+);
 ```
 
 ### Example: Adding a Torrent
@@ -54,7 +90,7 @@ console.log("Added torrent with ID:", response.torrentAdded.id);
 ### Example: Listing Torrents
 
 ```typescript
-const torrents = await client.get({
+const torrents = await client.torrents({
   fields: ["id", "name", "percentDone", "status"],
 });
 
@@ -82,19 +118,41 @@ console.log("Upload speed:", stats.uploadSpeed);
 #### Constructor
 
 ```typescript
-new TransmissionClient(baseUrl: string, credentials?: Credentials)
+new TransmissionClient(config: TransmissionClientConfig)
 ```
 
-- `baseUrl`: The base URL of the Transmission RPC server (e.g.,
-  `http://localhost:9091`).
-- `credentials`: Optional credentials for authentication
-  (`{ username: string, password: string }`).
+The constructor accepts flexible configuration formats:
+
+- **String URL**: A URL string (e.g., `"http://localhost:9091"`)
+- **URL Object**: A URL object instance
+- **Configuration Object**: An object with `host`, `port`, `ssl`, `username`,
+  `password`, and `timeoutMs` properties
+
+Examples:
+
+```typescript
+// String URL
+new TransmissionClient("http://localhost:9091");
+
+// URL Object
+new TransmissionClient(new URL("http://localhost:9091"));
+
+// Configuration Object
+new TransmissionClient({
+  host: "localhost",
+  port: 9091,
+  ssl: false,
+  username: "user",
+  password: "pass",
+  timeoutMs: 15000,
+});
+```
 
 #### Methods
 
 - **`session()`**: Retrieves session statistics and settings.
-- **`get(args?: GetTorrentArgs<K>)`**: Retrieves information about one or more
-  torrents.
+- **`torrents(args?: GetTorrentArgs<K>)`**: Retrieves information about one or
+  more torrents.
 - **`add(args: AddTorrentArgs)`**: Adds a new torrent to the session.
 - **`remove(ids: ID, deleteLocalData?: boolean)`**: Removes one or more
   torrents.
@@ -133,6 +191,9 @@ safety. Key types include:
 - **`TorrentSetArgs`**: Arguments for modifying torrent properties.
 - **`SessionStatsResponse`**: Response from the `session-stats` method.
 - **`PortTestResponse`**: Response from the `port-test` method.
+- **`TransmissionConfig`**: Configuration object for the client constructor.
+- **`TransmissionClientConfig`**: Union type for all constructor configuration
+  formats.
 
 For detailed type definitions, refer to the source code or TypeScript
 IntelliSense.

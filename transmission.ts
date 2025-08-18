@@ -11,6 +11,7 @@ import type {
   SessionStatsResponse,
   Torrent,
   TorrentSetArgs,
+  TransmissionClientConfig,
 } from "./types.ts";
 
 /**
@@ -26,9 +27,8 @@ interface RPCSuccess<T> {
  * Represents a failed RPC response.
  */
 interface RPCFailure {
-  result: "error";
-  error: string;
-  errorCode: number;
+  // Transmission uses a string for non-success, e.g. "invalid request"
+  result: string;
 }
 
 /**
@@ -38,52 +38,149 @@ interface RPCFailure {
 type RPCResponse<T> = RPCSuccess<T> | RPCFailure;
 
 /**
- * Represents an error returned by the Transmission RPC API.
+ * Extended AbortSignal interface that includes our custom timeout ID property.
  */
-export class RPCError extends Error {
-  /**
-   * Creates a new RPCError instance.
-   * @param message - The error message.
-   * @param code - The error code.
-   */
-  constructor(
-    message: string,
-    public readonly code: number,
-  ) {
-    super(message);
-  }
+interface ExtendedAbortSignal extends AbortSignal {
+  _timeoutId?: number;
 }
 
 /**
  * A client for interacting with the Transmission RPC API.
  */
 export class TransmissionClient {
-  private readonly url: URL;
-  private readonly username: string;
-  private readonly password: string;
+  #url: URL;
+  #sessionId: string | null = null;
+  #requestTimeoutMs: number;
 
-  private sessionId: string | null = null;
+  /**
+   * Gets the configured URL for the Transmission RPC endpoint.
+   */
+  get url(): URL {
+    return this.#url;
+  }
+
+  /**
+   * Gets the configured username for authentication.
+   */
+  get username(): string {
+    return this.#url.username;
+  }
+
+  /**
+   * Gets the configured password for authentication.
+   */
+  get password(): string {
+    return this.#url.password;
+  }
+
+  /**
+   * Gets the configured request timeout in milliseconds.
+   */
+  get requestTimeoutMs(): number {
+    return this.#requestTimeoutMs;
+  }
 
   /**
    * Creates a new TransmissionClient instance.
-   * @param baseUrl - The base URL of the Transmission RPC server.
-   * @param credentials - Optional credentials for authentication.
+   * @param config - Configuration for the Transmission RPC server. Can be:
+   *   - A string URL (e.g., "http://localhost:9091")
+   *   - A URL object
+   *   - A configuration object with host, port, ssl, username, password, and timeoutMs
    */
-  constructor(
-    baseUrl: string | URL,
-    credentials?: { username?: string; password?: string },
-  ) {
-    const url = new URL("/transmission/rpc", baseUrl);
+  constructor(config: TransmissionClientConfig) {
+    const { url, timeoutMs } = this.parseConfig(config);
 
-    // Use credentials from URL or fallback to provided ones
-    this.username = credentials?.username ?? url.username;
-    this.password = credentials?.password ?? url.password;
+    this.#url = url;
+    this.#requestTimeoutMs = timeoutMs;
+  }
 
-    // Remove credentials from URL
-    url.username = "";
-    url.password = "";
+  /**
+   * Parses the configuration input and returns normalized values.
+   * @param config - The configuration input
+   * @returns Normalized configuration values
+   */
+  private parseConfig(config: TransmissionClientConfig): {
+    url: URL;
+    timeoutMs: number;
+  } {
+    let url: URL;
+    let timeoutMs = 10_000;
 
-    this.url = url;
+    if (typeof config === "string") {
+      // Handle string URL
+      url = new URL("/transmission/rpc", config);
+    } else if (config instanceof URL) {
+      // Handle URL object
+      url = new URL("/transmission/rpc", config);
+    } else {
+      // Handle configuration object
+      const protocol = config.ssl ? "https" : "http";
+      const auth = config.username && config.password
+        ? `${config.username}:${config.password}@`
+        : "";
+
+      url = new URL(
+        `/transmission/rpc`,
+        `${protocol}://${auth}${config.host}:${config.port}`,
+      );
+      timeoutMs = config.timeoutMs ?? 10_000;
+    }
+
+    return { url, timeoutMs };
+  }
+
+  /**
+   * Encodes a string to base64 across runtimes (Deno/Node/Bun/Browser/RN).
+   */
+  private toBase64(input: string): string {
+    // Deno/Browser/Bun typically provide btoa
+    if (typeof btoa === "function") {
+      return btoa(input);
+    }
+    // Node provides Buffer
+    // deno-lint-ignore no-explicit-any
+    const maybeBuffer: any =
+      (globalThis as unknown as { Buffer?: unknown }).Buffer;
+    if (maybeBuffer && typeof maybeBuffer.from === "function") {
+      return maybeBuffer.from(input, "utf-8").toString("base64");
+    }
+    throw new Error(
+      "Base64 encoding is not available in this environment. Please polyfill `btoa` or `Buffer`.",
+    );
+  }
+
+  /**
+   * Creates an AbortSignal that will abort after the specified timeout.
+   * Falls back to a custom implementation if AbortSignal.timeout is not available.
+   * @param timeoutMs - The timeout in milliseconds.
+   * @returns An AbortSignal that will abort after the timeout.
+   */
+  private createTimeoutSignal(timeoutMs: number): AbortSignal {
+    // Check if AbortSignal.timeout is available (modern browsers/environments)
+    if (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) {
+      return AbortSignal.timeout(timeoutMs);
+    }
+
+    // Fallback for platforms that don't support AbortSignal.timeout (e.g., React Native)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    // Store the timeout ID on the signal so we can clear it if needed
+    (controller.signal as ExtendedAbortSignal)._timeoutId = timeoutId;
+
+    return controller.signal;
+  }
+
+  /**
+   * Cleans up a timeout signal if it was created with the fallback implementation.
+   * @param signal - The AbortSignal to clean up.
+   */
+  private cleanupTimeoutSignal(signal: AbortSignal): void {
+    // Only clean up if it's our custom fallback implementation
+    const extendedSignal = signal as ExtendedAbortSignal;
+    if (extendedSignal._timeoutId) {
+      clearTimeout(extendedSignal._timeoutId);
+    }
   }
 
   /**
@@ -94,7 +191,7 @@ export class TransmissionClient {
     const { username, password } = this;
     if (username || password) {
       // Only generate the header if either username or password is non-empty
-      const encoded = btoa(`${username}:${password}`);
+      const encoded = this.toBase64(`${username}:${password}`);
       return `Basic ${encoded}`;
     }
     return undefined;
@@ -113,6 +210,7 @@ export class TransmissionClient {
     method: string,
     // deno-lint-ignore no-explicit-any
     args?: { [key: string]: any },
+    retryCount: number = 0,
   ): Promise<RPCSuccess<T>["arguments"]> {
     const headers = new Headers();
 
@@ -121,16 +219,32 @@ export class TransmissionClient {
       headers.set("authorization", authHeader);
     }
 
-    if (this.sessionId) {
-      headers.set("x-transmission-session-id", this.sessionId);
+    if (this.#sessionId) {
+      headers.set("x-transmission-session-id", this.#sessionId);
     }
 
-    const response = await fetch(this.url, {
-      body: JSON.stringify({ method, arguments: args }),
-      headers,
-      method: "POST",
-      signal: AbortSignal.timeout(10_000), // Abort after 10 seconds
-    });
+    headers.set("content-type", "application/json");
+    headers.set("accept", "application/json");
+
+    // Create a timeout signal that works across all platforms
+    const timeoutSignal = this.createTimeoutSignal(this.#requestTimeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(this.url, {
+        body: JSON.stringify({ method, arguments: args }),
+        headers,
+        method: "POST",
+        signal: timeoutSignal,
+      });
+    } catch (error) {
+      // Clean up the timeout signal if it was our custom implementation
+      this.cleanupTimeoutSignal(timeoutSignal);
+      throw error;
+    }
+
+    // Clean up the timeout signal since the request completed successfully
+    this.cleanupTimeoutSignal(timeoutSignal);
 
     if (
       response.status === 409 ||
@@ -138,26 +252,36 @@ export class TransmissionClient {
     ) {
       const newSessionId = response.headers.get("X-Transmission-Session-Id");
       if (newSessionId) {
-        this.sessionId = newSessionId;
+        this.#sessionId = newSessionId;
       }
       if (response.status === 409) {
-        return this.rpc(method, args);
+        if (retryCount >= 2) {
+          throw new Error(
+            "Failed to negotiate Transmission session after multiple attempts (409).",
+          );
+        }
+        return this.rpc(method, args, retryCount + 1);
       }
     }
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      throw new Error(
+        `API request failed: [${response.status}] ${response.statusText}`,
+      );
     }
 
     const json: RPCResponse<unknown> = await response.json();
 
-    if (json.result === "error") {
-      throw new RPCError(json.error, json.errorCode);
+    if (json.result !== "success") {
+      throw new Error(json.result);
     }
 
-    return camelcaseKeys(json.arguments as Record<string, unknown>, {
-      deep: true,
-    }) as T;
+    return camelcaseKeys(
+      (json as RPCSuccess<unknown>).arguments as Record<string, unknown>,
+      {
+        deep: true,
+      },
+    ) as T;
   }
 
   /**
@@ -174,7 +298,7 @@ export class TransmissionClient {
    * @param args - Optional arguments to filter and select torrent fields.
    * @returns A promise resolving to the list of torrents.
    */
-  public get<K extends keyof Torrent>(
+  public torrents<K extends keyof Torrent>(
     args?: GetTorrentArgs<K>,
   ): Promise<GetTorrentResponse<K>> {
     return this.rpc<GetTorrentResponse<K>>("torrent-get", args);
